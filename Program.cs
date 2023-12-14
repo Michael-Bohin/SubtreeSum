@@ -1,6 +1,8 @@
-﻿using static System.Console;
+﻿using System.ComponentModel.Design;
+using System.Security.Cryptography;
+using static System.Console;
 
-WriteLine("Hello, Subtree World!");
+WriteLine("Hello, Subtree World!\n");
 
 List<Vertex> graph = new() {
 	new("A", new() { "B", "C"} ),
@@ -16,9 +18,31 @@ List<Vertex> graph = new() {
 	new("K", new() { } ) 
 };
 
-SubtreeCrawler sc = new(graph);
-sc.CalculateSubtreeSums();
-sc.PrintResult();
+WriteLine("    >>> FCP <<<");
+FirstCommonParent fcp = new(graph);
+fcp.CalculateSubtreeSums();
+fcp.PrintResult();
+
+
+// reset graph instances just to be sure:
+graph = new() {
+	new("A", new() { "B", "C"} ),
+	new("B", new() { "D", "E", "F"} ),
+	new("C", new() { "D", "F"} ),
+	new("D", new() { "G", "H"} ),
+	new("E", new() { "H", "I"} ),
+	new("F", new() { "I"} ),
+	new("G", new() { "J", "K"} ),
+	new("H", new() { "K"} ),
+	new("I", new() { "K"} ),
+	new("J", new() { } ),
+	new("K", new() { } )
+};
+
+WriteLine("\n\n    >>> SPCM <<<");
+SubtractPathCountMultiples spcm = new(graph);
+spcm.CalculateSubtreeSums();
+spcm.PrintResult();
 
 enum Color { White, Grey, Black };
 
@@ -32,6 +56,7 @@ class Vertex {
 	public int SubtreeSum = 0;
 	public Vertex? LastBlackParent = null;
 	public Color Color = Color.White;
+	public int PathsFromSourceCount = 0;
 
 	public Vertex(string name, List<string> children) {
 		Name = name;
@@ -39,8 +64,8 @@ class Vertex {
 	}
 }
 
-class SubtreeCrawler {
-	Dictionary<string, Vertex> graph = new();
+abstract class SubtreeCrawler {
+	protected Dictionary<string, Vertex> graph = new();
 
 	public SubtreeCrawler(List<Vertex> vertices) { 
 		foreach(Vertex v in vertices)
@@ -55,7 +80,22 @@ class SubtreeCrawler {
 		Subtree(graph["A"]);
 	}
 
-	private void Subtree(Vertex v) {
+	protected abstract void Subtree(Vertex v);
+
+	public void PrintResult() {
+		WriteLine("Subtree sums:");
+		foreach(Vertex v in graph.Values)
+			WriteLine($"{v.Name}: {v.SubtreeSum}");
+	}
+}
+
+// DFS - substract first common predecessor approach
+// 'FCP'
+
+class FirstCommonParent : SubtreeCrawler { 
+	public FirstCommonParent(List<Vertex> g) : base(g) { }
+
+	protected override void Subtree(Vertex v){
 		v.Color = Color.Grey;
 		WriteLine(v.Name);
 
@@ -74,7 +114,7 @@ class SubtreeCrawler {
 			child.LastBlackParent = v; // this happens regardless we return from initialy white, or if we just observe black and dont actually call self there
 		}
 
-		if (v.Name == "H") 
+		if (v.Name == "H")
 			WriteLine("Debug will start here");
 
 		// add value of time ins of self..:
@@ -85,14 +125,55 @@ class SubtreeCrawler {
 
 	private Vertex FindFirstCommonPredecessor(Vertex from) {
 		Vertex temp = from.LastBlackParent!;
-		while(temp!.Color == Color.Black)
+		while (temp!.Color == Color.Black)
 			temp = temp.LastBlackParent!;
 		return temp;
 	}
+}
 
-	public void PrintResult() {
-		WriteLine("Subtree sums:");
-		foreach(Vertex v in graph.Values)
-			WriteLine($"{v.Name}: {v.SubtreeSum}");
+// DFS sum followed by DFS path counts to each vertex -> substract multiples - 1 of path count * vertex value foreach vertex
+// 'SPCM'
+// V neosetrenem DFS se duplicity od nejakeho vrcholu v opakuji prave tolikrat,
+// kolik ruznych cest vede do vrcholu v minus 1. Staci tady odecist vahu vrcholu krat (path count from root -1) 
+// !! Pro obecny case s vice zdroji nad top sort je nejspis treba osetrit umelym superzdrojem (na promysleni) 
+class SubtractPathCountMultiples : SubtreeCrawler {
+	public SubtractPathCountMultiples(List<Vertex> g): base(g) { }
+
+	// Gameplan:
+	// 1. sum = Run dumm DFS that retrieves sum with duplicities
+	// 2. Run DFS that counts count of different paths to each Vertex
+	// 3. Foreach vertex v 
+	// 4.		sum -=  ((v.pathCount - 1)  * v.TimeInS )
+	// 5. return sum
+	protected override void Subtree(Vertex source) {
+		int sum = SPCM(source);
+
+		foreach(Vertex v in graph.Values) 
+			WriteLine($"Paths from source to {v.Name} count: {v.PathsFromSourceCount}");
+
+		WriteLine($"SPCM result for source vertex is: {sum}");
 	}
+
+	private int SPCM(Vertex source) {
+		int sum = DuplicitSumDFS(source);
+		// CountPathsFromSource(source);
+		foreach (Vertex v in graph.Values)
+			sum -= ((v.PathsFromSourceCount - 1) * v.TimeInSeconds);
+		return sum;
+	}
+
+	int DuplicitSumDFS(Vertex source) {
+		source.PathsFromSourceCount++;
+		int sum = source.TimeInSeconds;
+		foreach(Vertex child in source.Children)
+			sum += DuplicitSumDFS(child);
+		WriteLine($"Duplicit sum of {source.Name} is {sum}");
+		return sum;	
+	}
+	/*
+	void CountPathsFromSource(Vertex source) { 
+		source.PathsFromSourceCount++;
+		foreach(Vertex child in source.Children)
+			CountPathsFromSource(child);
+	}*/
 }
